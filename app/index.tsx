@@ -1,7 +1,13 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
 import { useEffect, useRef, useState } from "react";
-import { Text, TouchableOpacity, View, useColorScheme } from "react-native";
+import { Alert, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  isBackgroundSyncRunning,
+  startBackgroundSync,
+  stopBackgroundSync,
+} from "../services/BackgroundClipboardService";
 
 const API_ENDPOINT =
   "https://echo-proxy-murex.vercel.app/api/trpc/clipboard.addItem?batch=1";
@@ -50,19 +56,46 @@ async function fetchDesktopClipboard(): Promise<string | null> {
 export default function HomeScreen() {
   const [isRunning, setIsRunning] = useState(false);
   const [lastClipboard, setLastClipboard] = useState<string | null>(null);
-  const [lastDesktopClipboard, setLastDesktopClipboard] = useState<string | null>(null);
+  const [lastDesktopClipboard, setLastDesktopClipboard] = useState<
+    string | null
+  >(null);
+  const [isBackgroundMode, setIsBackgroundMode] = useState(false);
   const intervalRef = useRef<number | null>(null);
-  const colorScheme = useColorScheme();
 
-  // Poll device clipboard and send to API if changed
+  // Load saved clipboard data on app start
   useEffect(() => {
-    if (!isRunning) return;
+    const loadSavedData = async () => {
+      try {
+        const savedClipboard = await AsyncStorage.getItem("lastClipboard");
+        const savedDesktopClipboard = await AsyncStorage.getItem(
+          "lastDesktopClipboard"
+        );
+        if (savedClipboard) setLastClipboard(savedClipboard);
+        if (savedDesktopClipboard)
+          setLastDesktopClipboard(savedDesktopClipboard);
+
+        // Check if background sync is running
+        const backgroundRunning = await isBackgroundSyncRunning();
+        setIsBackgroundMode(backgroundRunning);
+        setIsRunning(backgroundRunning);
+      } catch (error) {
+        console.error("Failed to load saved data:", error);
+      }
+    };
+
+    loadSavedData();
+  }, []);
+
+  // Poll device clipboard and send to API if changed (foreground mode)
+  useEffect(() => {
+    if (!isRunning || isBackgroundMode) return;
     let isMounted = true;
     intervalRef.current = setInterval(async () => {
       try {
         const content = await Clipboard.getStringAsync();
         if (content && content !== lastClipboard) {
           setLastClipboard(content);
+          await AsyncStorage.setItem("lastClipboard", content);
           await sendToAPI(content);
         }
       } catch (e) {
@@ -73,12 +106,11 @@ export default function HomeScreen() {
       isMounted = false;
       if (intervalRef.current !== null) clearInterval(intervalRef.current);
     };
-     
-  }, [isRunning, lastClipboard]);
+  }, [isRunning, lastClipboard, isBackgroundMode]);
 
-  // Poll API for desktop clipboard and copy to device if changed
+  // Poll API for desktop clipboard and copy to device if changed (foreground mode)
   useEffect(() => {
-    if (!isRunning) return;
+    if (!isRunning || isBackgroundMode) return;
     let isMounted = true;
     const desktopInterval = setInterval(async () => {
       try {
@@ -90,6 +122,8 @@ export default function HomeScreen() {
         ) {
           setLastDesktopClipboard(desktopContent);
           setLastClipboard(desktopContent); // keep in sync
+          await AsyncStorage.setItem("lastDesktopClipboard", desktopContent);
+          await AsyncStorage.setItem("lastClipboard", desktopContent);
           await Clipboard.setStringAsync(desktopContent);
         }
       } catch (e) {
@@ -100,56 +134,111 @@ export default function HomeScreen() {
       isMounted = false;
       clearInterval(desktopInterval);
     };
-     
-  }, [isRunning, lastDesktopClipboard, lastClipboard]);
+  }, [isRunning, lastDesktopClipboard, lastClipboard, isBackgroundMode]);
 
-  const toggle = () => setIsRunning((r) => !r);
+  const toggle = async () => {
+    if (isRunning) {
+      // Stop syncing
+      if (isBackgroundMode) {
+        await stopBackgroundSync();
+        setIsBackgroundMode(false);
+      }
+      setIsRunning(false);
+    } else {
+      // Start syncing
+      try {
+        // Try to start background sync first
+        await startBackgroundSync();
+        setIsBackgroundMode(true);
+        setIsRunning(true);
+        Alert.alert(
+          "Background Sync Started",
+          "Clipboard syncing is now running in the background. The app will continue to sync even when minimized or closed.",
+          [{ text: "OK" }]
+        );
+      } catch (error) {
+        console.log("Background sync failed, falling back to foreground mode");
+        // Fall back to foreground mode
+        setIsBackgroundMode(false);
+        setIsRunning(true);
+        Alert.alert(
+          "Foreground Sync Started",
+          "Clipboard syncing is running in foreground mode. Keep the app open for continuous syncing.",
+          [{ text: "OK" }]
+        );
+      }
+    }
+  };
 
   return (
-    <SafeAreaView
-      className="flex items-center justify-center min-h-screen bg-gray-900 px-4"
-    >
-      <Text className="text-4xl font-bold text-green-500 mb-8 tracking-tight drop-shadow-md">
+    <SafeAreaView className="flex items-center justify-center min-h-screen bg-white px-4">
+      <Text
+        style={{ fontFamily: "PerfectlyNineties" }}
+        className="text-5xl text-black mb-8 tracking-tight drop-shadow-md"
+      >
         Echo
       </Text>
       <Text
-        className={`px-4 py-2 rounded-full mb-6 text-lg font-semibold shadow-md ${
-          isRunning
-            ? 'bg-green-900 text-green-200'
-            : 'bg-red-900 text-red-200'
+        style={{ fontFamily: "MatterMedium" }}
+        className={`px-6 py-3 rounded-full mb-8 text-lg shadow-md ${
+          isRunning ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
         }`}
       >
-        {isRunning ? 'Syncing' : 'Stopped'}
+        {isRunning
+          ? isBackgroundMode
+            ? "Background Syncing"
+            : "Foreground Syncing"
+          : "Stopped"}
       </Text>
-      <View className="w-full max-w-md bg-gray-900 rounded-2xl shadow-lg p-6 mb-8 border border-gray-700">
-        <Text className="text-gray-300 text-base mb-2 font-medium">
+      <View className="w-full max-w-md bg-gray-50 rounded-2xl shadow-lg p-6 mb-8 border border-gray-200">
+        <Text
+          style={{ fontFamily: "MatterSemiBold" }}
+          className="text-gray-700 text-base mb-2"
+        >
           Last copied on this device:
         </Text>
-        <Text className="text-gray-100 text-lg font-mono bg-gray-800 rounded px-2 py-1 mb-4 break-all">
-          {lastClipboard ?? 'Empty'}
+        <Text
+          style={{ fontFamily: "MatterRegular" }}
+          className="text-gray-700 text-lg bg-white rounded px-3 py-2 mb-4 break-all border border-gray-200"
+        >
+          {lastClipboard ?? "Empty"}
         </Text>
-        <Text className="text-gray-300 text-base mb-2 font-medium">
+        <Text
+          style={{ fontFamily: "MatterSemiBold" }}
+          className="text-gray-700 text-base mb-2"
+        >
           Last copied from desktop:
         </Text>
-        <Text className="text-blue-200 text-lg font-mono bg-blue-900 rounded px-2 py-1 break-all">
-          {lastDesktopClipboard ?? 'Empty'}
+        <Text
+          style={{ fontFamily: "MatterRegular" }}
+          className="text-gray-700 text-lg bg-white rounded px-3 py-2 break-all border border-gray-200"
+        >
+          {lastDesktopClipboard ?? "Empty"}
         </Text>
       </View>
       <TouchableOpacity
-        className={`w-full max-w-xs py-3 rounded-xl shadow-md ${
-          isRunning
-            ? 'bg-red-700'
-            : 'bg-green-700'
+        className={`w-full max-w-xs py-4 rounded-full shadow-md ${
+          isRunning ? "bg-red-600" : "bg-black"
         }`}
         onPress={toggle}
         activeOpacity={0.85}
       >
-        <Text className="text-white text-lg font-bold text-center">
-          {isRunning ? 'Stop Clipboard Sync' : 'Start Clipboard Sync'}
+        <Text
+          style={{ fontFamily: "MatterBold" }}
+          className="text-white text-lg text-center"
+        >
+          {isRunning ? "Stop Clipboard Sync" : "Start Clipboard Sync"}
         </Text>
       </TouchableOpacity>
-      <Text className="mt-8 text-gray-400 text-center text-xs">
-        Your clipboard is kept in sync with your desktop device in the background.
+      <Text
+        style={{ fontFamily: "MatterRegular" }}
+        className="mt-8 text-gray-500 text-center text-sm px-4"
+      >
+        {isBackgroundMode
+          ? "Your clipboard is syncing in the background, even when the app is closed."
+          : isRunning
+          ? "Your clipboard is syncing in the foreground. Keep the app open for continuous syncing."
+          : "Your clipboard will be kept in sync with your desktop device."}
       </Text>
     </SafeAreaView>
   );

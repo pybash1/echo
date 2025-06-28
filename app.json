@@ -13,8 +13,9 @@
       "bundleIdentifier": "xyz.pybash.echo",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": ["fetch", "processing"],
-        "NSUserActivityTypes": ["clipboard-listener-for-echo"]
+        "UIBackgroundModes": ["fetch", "processing", "background-app-refresh"],
+        "NSUserActivityTypes": ["clipboard-listener-for-echo"],
+        "BGTaskSchedulerPermittedIdentifiers": ["clipboard-sync"]
       }
     },
     "android": {
@@ -26,7 +27,9 @@
       "package": "xyz.pybash.echo",
       "permissions": [
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.WAKE_LOCK"
+        "android.permission.WAKE_LOCK",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
       ]
     },
     "web": {
@@ -45,7 +48,6 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "expo-background-task",
       [
         "expo-notifications",
         {
