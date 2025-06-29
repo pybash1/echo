@@ -88,7 +88,7 @@ export default function HomeScreen() {
 
   // Poll device clipboard and send to API if changed (foreground mode)
   useEffect(() => {
-    if (!isRunning || isBackgroundMode) return;
+    if (!isRunning) return;
     let isMounted = true;
     intervalRef.current = setInterval(async () => {
       try {
@@ -171,7 +171,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <SafeAreaView className="flex items-center justify-center min-h-screen bg-white px-4">
+    <SafeAreaView className="flex items-center justif-between min-h-screen bg-white px-4">
       <Text
         style={{ fontFamily: "PerfectlyNineties" }}
         className="text-5xl text-black mb-8 tracking-tight drop-shadow-md"
@@ -238,7 +238,7 @@ export default function HomeScreen() {
           ? "Your clipboard is syncing in the background, even when the app is closed."
           : isRunning
           ? "Your clipboard is syncing in the foreground. Keep the app open for continuous syncing."
-          : "Your clipboard will be kept in sync with your desktop device."}
+          : "Your clipboard will be kept in sync with your mac."}
       </Text>
     </SafeAreaView>
   );
