@@ -10,9 +10,9 @@ import {
 } from "../services/BackgroundClipboardService";
 
 const API_ENDPOINT =
-  "https://echo-proxy-murex.vercel.app/api/trpc/clipboard.addItem?batch=1";
+  process.env.EXPO_PUBLIC_PROXY_URL + "/api/trpc/clipboard.addItem?batch=1";
 const API_FETCH_DESKTOP =
-  "https://echo-proxy-murex.vercel.app/api/trpc/clipboard.getLastCopiedItem?batch=1";
+  process.env.EXPO_PUBLIC_PROXY_URL + "/api/trpc/clipboard.getLastCopiedItem?batch=1";
 
 const POLL_INTERVAL = 1000; // ms
 
